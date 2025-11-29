@@ -28,6 +28,7 @@
 #include "serial_handler.h"
 #include "web_server_handler.h"
 #include "firebase_handler.h"
+#include "decision_tree.h"       // Fasulye sera karar ağacı
 
 // JSON buffer (Arduino'dan gelen sensor verileri)
 String jsonBuffer = "";
@@ -77,6 +78,9 @@ void setup() {
     
     // Firebase bağlantısını kur
     initFirebase();
+    
+    // Karar ağacını başlat
+    initDecisionTree();
     
     // Başlangıçta SD'deki eksik paketleri Firebase'e yükle
     // NOT: Şimdilik devre dışı - sistem yavaşlamasına neden oluyor
@@ -142,6 +146,9 @@ void loop() {
         processReceivedJSON();
     }
     
+    // Karar ağacını çalıştır (10 saniyede bir)
+    runDecisionTreeIfNeeded();
+    
     // Firebase'e periyodik gönderim (30 saniyede bir)
     if (millis() - lastFirebaseSend > FIREBASE_SEND_INTERVAL) {
         lastFirebaseSend = millis();
@@ -164,6 +171,7 @@ void loop() {
 // ============================================
 // JSON İŞLEME FONKSİYONU (Optimize edildi)
 // SD'ye hemen yaz, Firebase'e sadece 30 saniyede bir gönder
+// Karar ağacı için sensör verilerini parse et
 // ============================================
 void processReceivedJSON() {
     Serial.println("\n>>> ARDUINO'DAN JSON ALINDI <<<");
@@ -177,6 +185,11 @@ void processReceivedJSON() {
         jsonBuffer = "";
         jsonComplete = false;
         return;
+    }
+    
+    // Karar ağacı için sensör verilerini parse et
+    if (parseSensorData(jsonBuffer)) {
+        Serial.println("[OK] Sensor verileri karar agacina aktarildi");
     }
     
     // Web interface için son veriyi sakla
