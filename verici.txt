@@ -1,0 +1,58 @@
+
+/*
+ * Arduino Mega - Çift Yönlü Serial Haberleşme Örneği
+ *
+ * Bu kod, iki seri portu aynı anda kullanır:
+ * 1. 'Serial' (USB Portu): Bilgisayarınızdaki Seri Monitör ile konuşur.
+ * 2. 'Serial1' (Pin 18/19): Başka bir cihaz (diğer Arduino, ESP, vb.) ile konuşur.
+ *
+ * Nasıl Çalışır:
+ * - Serial1 (Pin 19/RX1) üzerinden bir veri gelirse, bunu okur ve 'Serial' portuna (Seri Monitör) yazar.
+ * - 'Serial' portuna (Seri Monitör) siz bir veri yazıp gönderirseniz, bunu okur ve Serial1 (Pin 18/TX1) üzerinden diğer cihaza gönderir.
+ */
+
+void setup() {
+  // 1. Bilgisayar ile haberleşme için USB portunu başlat (Seri Monitör)
+  Serial.begin(9600);
+  while (!Serial) {
+    ; // Serial port bağlanana kadar bekle
+  }
+  Serial.println("Arduino Mega Seri Monitör Başlatıldı.");
+
+  // 2. Diğer cihaz ile haberleşme için Serial1 portunu (Pin 18, 19) başlat
+  // DİKKAT: Diğer cihazın baud rate hızı da 9600 olmalı!
+  Serial1.begin(115200);
+  Serial.println("Serial1 (Pin 18/19) dinleniyor...");
+  Serial.println("----------------------------------------------");
+  Serial.println("Seri Monitöre bir şey yazıp Enter'a basarak diğer cihaza veri gönderebilirsiniz.");
+}
+
+void loop() {
+  
+  // GÖREV 1: Diğer cihazdan veri alma (RX)
+  // Serial1 (Pin 19) üzerinde okunacak veri var mı?
+  if (Serial1.available() > 0) {
+    // Veri varsa, satır sonuna kadar ('\n') oku
+    String gelenVeri = Serial1.readStringUntil('\n');
+    gelenVeri.trim(); // Başındaki/sonundaki boşlukları temizle
+
+    // Gelen veriyi Seri Monitör'e yazdır
+    Serial.print("[CIHAZDAN ALINDI <- RX1]: ");
+    Serial.println(gelenVeri);
+  }
+
+  // GÖREV 2: Diğer cihaza veri gönderme (TX)
+  // Seri Monitör (USB) üzerinden kullanıcı bir veri gönderdi mi?
+  if (Serial.available() > 0) {
+    // Veri varsa, satır sonuna kadar ('\n') oku
+    String gonderilecekVeri = Serial.readStringUntil('\n');
+    gonderilecekVeri.trim(); // Başındaki/sonundaki boşlukları temizle
+
+    // Gelen veriyi Seri Monitör'e (onay için) yazdır
+    Serial.print("[CIHAZA GÖNDERİLDİ -> TX1]: ");
+    Serial.println(gonderilecekVeri);
+
+    // Okunan veriyi Serial1 (Pin 18) üzerinden diğer cihaza gönder
+    Serial1.println(gonderilecekVeri);
+  }
+}
