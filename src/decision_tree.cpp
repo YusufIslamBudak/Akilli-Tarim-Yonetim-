@@ -16,6 +16,7 @@
 // GLOBAL DEĞİŞKENLER
 // ========================================
 static SensorData currentSensors = {0};
+static DecisionStatus decisionStatus = {0};
 
 // Son komut zamanları (tekrar önleme)
 static String lastFanCommand = "";
@@ -145,6 +146,101 @@ SensorData& getCurrentSensors() {
     return currentSensors;
 }
 
+DecisionStatus& getDecisionStatus() {
+    return decisionStatus;
+}
+
+// ========================================
+// DURUM DEĞERLENDİRME FONKSİYONLARI
+// ========================================
+static void updateParameterStatus() {
+    float temp = currentSensors.temperature;
+    float hum = currentSensors.humidity;
+    int co2 = currentSensors.co2;
+    float soil = currentSensors.soilMoisture;
+    float pres = currentSensors.pressure;
+    float lux = currentSensors.lux;
+    
+    // Sıcaklık durumu
+    if (temp <= BEAN_TEMP_CRITICAL_COLD) {
+        decisionStatus.tempStatus = "KRITIK_SOGUK";
+    } else if (temp >= BEAN_TEMP_CRITICAL_HOT) {
+        decisionStatus.tempStatus = "KRITIK_SICAK";
+    } else if (temp < BEAN_TEMP_MIN_IDEAL) {
+        decisionStatus.tempStatus = "SOGUK";
+    } else if (temp > BEAN_TEMP_MAX_IDEAL) {
+        decisionStatus.tempStatus = "SICAK";
+    } else {
+        decisionStatus.tempStatus = "OPTIMAL";
+    }
+    
+    // Nem durumu
+    if (hum >= BEAN_HUM_MAX_RISK) {
+        decisionStatus.humStatus = "KUF_RISKI";
+    } else if (hum > BEAN_HUM_MAX_IDEAL) {
+        decisionStatus.humStatus = "YUKSEK";
+    } else if (hum < BEAN_HUM_MIN_RISK) {
+        decisionStatus.humStatus = "COK_DUSUK";
+    } else if (hum < BEAN_HUM_MIN_IDEAL) {
+        decisionStatus.humStatus = "DUSUK";
+    } else {
+        decisionStatus.humStatus = "OPTIMAL";
+    }
+    
+    // CO2 durumu
+    if (co2 >= BEAN_CO2_HARMFUL) {
+        decisionStatus.co2Status = "TEHLIKELI";
+    } else if (co2 > BEAN_CO2_MAX_IDEAL) {
+        decisionStatus.co2Status = "YUKSEK";
+    } else if (co2 < BEAN_CO2_MIN_PHOTOSYN) {
+        decisionStatus.co2Status = "COK_DUSUK";
+    } else if (co2 < BEAN_CO2_MIN_IDEAL) {
+        decisionStatus.co2Status = "DUSUK";
+    } else {
+        decisionStatus.co2Status = "OPTIMAL";
+    }
+    
+    // Toprak nemi durumu
+    if (soil <= BEAN_SOIL_TOO_DRY) {
+        decisionStatus.soilStatus = "ACIL_KURU";
+    } else if (soil >= BEAN_SOIL_TOO_WET) {
+        decisionStatus.soilStatus = "ASIRI_ISLAK";
+    } else if (soil < BEAN_SOIL_MIN_IDEAL) {
+        decisionStatus.soilStatus = "KURU";
+    } else if (soil > BEAN_SOIL_MAX_IDEAL) {
+        decisionStatus.soilStatus = "ISLAK";
+    } else {
+        decisionStatus.soilStatus = "OPTIMAL";
+    }
+    
+    // Basınç durumu
+    if (pres > 0 && pres < PRESSURE_LOW_STORM) {
+        decisionStatus.pressureStatus = "FIRTINA_RISKI";
+    } else if (pres > PRESSURE_HIGH_WET) {
+        decisionStatus.pressureStatus = "COK_YUKSEK";
+    } else {
+        decisionStatus.pressureStatus = "NORMAL";
+    }
+    
+    // Işık durumu
+    if (lux <= BEAN_LUX_NIGHT_MAX) {
+        decisionStatus.luxStatus = "KARANLIK";
+    } else if (lux < BEAN_LUX_CLOUDY) {
+        decisionStatus.luxStatus = "COK_DUSUK";
+    } else if (lux < BEAN_LUX_DAY_MIN) {
+        decisionStatus.luxStatus = "BULUTLU";
+    } else if (lux > BEAN_LUX_DAY_MAX) {
+        decisionStatus.luxStatus = "COK_GUNESLI";
+    } else {
+        decisionStatus.luxStatus = "YETERLI";
+    }
+    
+    // Mod bilgisi
+    decisionStatus.currentHour = getCurrentHour();
+    decisionStatus.isNightMode = isNightTime();
+    decisionStatus.isDayMode = isDayTime();
+}
+
 void sendCommandSafe(const char* command, String& lastCommand, unsigned long& lastTime) {
     unsigned long now = millis();
     
@@ -189,9 +285,21 @@ void makeDecision() {
     Serial.print("Saat: "); Serial.print(currentHour); 
     Serial.print(" - Mod: "); Serial.println(isNight ? "GECE" : "GUNDUZ");
     
+    // Parametre durumlarını güncelle
+    updateParameterStatus();
+    decisionStatus.totalDecisions++;
+    decisionStatus.lastDecisionTime = millis();
+    
+    // Varsayılan öneriler
+    decisionStatus.suggestFan = false;
+    decisionStatus.suggestLight = false;
+    decisionStatus.suggestPump = false;
+    
     // ---- 0) GEÇERSİZ VERİ KONTROLÜ ----
     if (temp == 0 && hum == 0 && co2 == 0 && soil == 0) {
         Serial.println("[UYARI] Sensor verileri dolu degil, karar atlaniyor.");
+        decisionStatus.lastDecisionCode = "HATA";
+        decisionStatus.lastDecisionDesc = "Sensor verileri bos";
         return;
     }
 
@@ -202,6 +310,9 @@ void makeDecision() {
     // 1.a) DONMA RİSKİ (< 12°C)
     if (temp <= BEAN_TEMP_CRITICAL_COLD || dew < 5.0) {
         Serial.println(">>> KOD-1: DONMA RISKI / COK SOGUK <<<");
+        decisionStatus.lastDecisionCode = "KOD-1";
+        decisionStatus.lastDecisionDesc = "Donma riski - Cok soguk";
+        decisionStatus.suggestLight = true;
         
         // Hava akışını kapat, ısıyı koru
         if (currentSensors.fanOn) {
@@ -213,6 +324,7 @@ void makeDecision() {
         // Işık ile ısıtma desteği
         if (!currentSensors.lightOn) {
             sendCommandSafe("isikac", lastLightCommand, lastLightCommandTime);
+            decisionStatus.lightOnCount++;
         }
         Serial.println("========================================\n");
         return;
@@ -221,6 +333,9 @@ void makeDecision() {
     // 1.b) AŞIRI SICAK (>= 35°C) - Fotosentez durur!
     if (temp >= BEAN_TEMP_CRITICAL_HOT) {
         Serial.println(">>> KOD-2: ASIRI SICAK - FOTOSENTEZ TEHLIKEDE <<<");
+        decisionStatus.lastDecisionCode = "KOD-2";
+        decisionStatus.lastDecisionDesc = "Asiri sicak - Fotosentez tehlikede";
+        decisionStatus.suggestFan = true;
         
         // Acil havalandırma
         if (!currentSensors.fanOn) {
@@ -493,4 +608,67 @@ void printDecisionStatus() {
     Serial.print("Isik: "); Serial.println(currentSensors.lightOn ? "ACIK" : "KAPALI");
     Serial.print("Pompa: "); Serial.println(currentSensors.pumpOn ? "ACIK" : "KAPALI");
     Serial.println("--------------------------\n");
+}
+
+// ========================================
+// JSON FONKSİYONLARI
+// ========================================
+
+String getDecisionStatusJSON() {
+    String json = "{";
+    
+    // Mod bilgisi
+    json += "\"mode\":\"" + String(decisionStatus.isNightMode ? "GECE" : "GUNDUZ") + "\",";
+    json += "\"hour\":" + String(decisionStatus.currentHour) + ",";
+    
+    // Son karar
+    json += "\"lastCode\":\"" + decisionStatus.lastDecisionCode + "\",";
+    json += "\"lastDesc\":\"" + decisionStatus.lastDecisionDesc + "\",";
+    json += "\"lastDecisionAge\":" + String((millis() - decisionStatus.lastDecisionTime) / 1000) + ",";
+    
+    // Parametre durumları
+    json += "\"tempStatus\":\"" + decisionStatus.tempStatus + "\",";
+    json += "\"humStatus\":\"" + decisionStatus.humStatus + "\",";
+    json += "\"co2Status\":\"" + decisionStatus.co2Status + "\",";
+    json += "\"soilStatus\":\"" + decisionStatus.soilStatus + "\",";
+    json += "\"pressureStatus\":\"" + decisionStatus.pressureStatus + "\",";
+    json += "\"luxStatus\":\"" + decisionStatus.luxStatus + "\",";
+    
+    // Öneriler
+    json += "\"suggestFan\":" + String(decisionStatus.suggestFan ? "true" : "false") + ",";
+    json += "\"suggestLight\":" + String(decisionStatus.suggestLight ? "true" : "false") + ",";
+    json += "\"suggestPump\":" + String(decisionStatus.suggestPump ? "true" : "false") + ",";
+    
+    // İstatistikler
+    json += "\"totalDecisions\":" + String(decisionStatus.totalDecisions) + ",";
+    json += "\"fanOnCount\":" + String(decisionStatus.fanOnCount) + ",";
+    json += "\"lightOnCount\":" + String(decisionStatus.lightOnCount) + ",";
+    json += "\"pumpOnCount\":" + String(decisionStatus.pumpOnCount);
+    
+    json += "}";
+    return json;
+}
+
+String createExtendedJSON(const String& sensorJson) {
+    // Orijinal JSON'un son '}' karakterini kaldır
+    String extended = sensorJson;
+    if (extended.endsWith("}")) {
+        extended = extended.substring(0, extended.length() - 1);
+    }
+    
+    // Karar ağacı bilgilerini ekle
+    extended += ",\"decision\":{";
+    extended += "\"mode\":\"" + String(decisionStatus.isNightMode ? "GECE" : "GUNDUZ") + "\",";
+    extended += "\"hour\":" + String(decisionStatus.currentHour) + ",";
+    extended += "\"code\":\"" + decisionStatus.lastDecisionCode + "\",";
+    extended += "\"desc\":\"" + decisionStatus.lastDecisionDesc + "\",";
+    extended += "\"tempSt\":\"" + decisionStatus.tempStatus + "\",";
+    extended += "\"humSt\":\"" + decisionStatus.humStatus + "\",";
+    extended += "\"co2St\":\"" + decisionStatus.co2Status + "\",";
+    extended += "\"soilSt\":\"" + decisionStatus.soilStatus + "\",";
+    extended += "\"presSt\":\"" + decisionStatus.pressureStatus + "\",";
+    extended += "\"luxSt\":\"" + decisionStatus.luxStatus + "\"";
+    extended += "}}";
+    
+    return extended;
 }

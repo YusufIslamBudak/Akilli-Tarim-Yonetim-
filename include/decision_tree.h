@@ -36,6 +36,40 @@ struct SensorData {
 };
 
 // ========================================
+// KARAR AĞACI DURUM YAPISI
+// ========================================
+struct DecisionStatus {
+    // Mevcut mod
+    bool isNightMode;           // Gece modu aktif mi
+    bool isDayMode;             // Gündüz modu aktif mi
+    int currentHour;            // Şu anki saat
+    
+    // Son alınan karar
+    String lastDecisionCode;    // Son karar kodu (KOD-1, KOD-2, vs)
+    String lastDecisionDesc;    // Son karar açıklaması
+    unsigned long lastDecisionTime; // Son karar zamanı
+    
+    // Parametre durumları
+    String tempStatus;          // "OPTIMAL", "SOGUK", "SICAK", "KRITIK"
+    String humStatus;           // "OPTIMAL", "DUSUK", "YUKSEK", "KUF_RISKI"
+    String co2Status;           // "OPTIMAL", "DUSUK", "YUKSEK", "TEHLIKELI"
+    String soilStatus;          // "OPTIMAL", "KURU", "ISLAK", "ACIL"
+    String pressureStatus;      // "NORMAL", "FIRTINA", "YUKSEK"
+    String luxStatus;           // "KARANLIK", "BULUTLU", "YETERLI", "GUNESLI"
+    
+    // Önerilen aksiyonlar
+    bool suggestFan;            // Fan açılmalı mı
+    bool suggestLight;          // Işık açılmalı mı
+    bool suggestPump;           // Pompa açılmalı mı
+    
+    // İstatistikler
+    unsigned long totalDecisions;   // Toplam karar sayısı
+    unsigned long fanOnCount;       // Fan açma sayısı
+    unsigned long lightOnCount;     // Işık açma sayısı
+    unsigned long pumpOnCount;      // Pompa açma sayısı
+};
+
+// ========================================
 // FONKSİYON PROTOTIPLERI
 // ========================================
 
@@ -56,6 +90,12 @@ bool parseSensorData(const String& json);
  * @return SensorData referansı
  */
 SensorData& getCurrentSensors();
+
+/**
+ * @brief Karar ağacı durumunu döndürür
+ * @return DecisionStatus referansı
+ */
+DecisionStatus& getDecisionStatus();
 
 /**
  * @brief Ana karar ağacı fonksiyonu
@@ -81,5 +121,18 @@ void sendCommandSafe(const char* command, String& lastCommand, unsigned long& la
  * @brief Karar ağacı durum bilgisini yazdırır
  */
 void printDecisionStatus();
+
+/**
+ * @brief Karar ağacı durumunu JSON formatında döndürür
+ * @return JSON string
+ */
+String getDecisionStatusJSON();
+
+/**
+ * @brief Firebase için genişletilmiş JSON oluşturur
+ * @param sensorJson Orijinal sensör JSON'u
+ * @return Karar ağacı bilgileri eklenmiş JSON
+ */
+String createExtendedJSON(const String& sensorJson);
 
 #endif // DECISION_TREE_H

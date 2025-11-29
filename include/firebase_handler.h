@@ -11,6 +11,7 @@
 #include "config.h"
 #include "serial_handler.h"
 #include "ntp_handler.h"
+#include "decision_tree.h"
 
 // ============================================
 // Firebase nesneleri (static inline)
@@ -55,7 +56,7 @@ inline void initFirebase() {
 }
 
 /**
- * @brief JSON verisini Firebase'e gönderir
+ * @brief JSON verisini Firebase'e gönderir (karar ağacı durumu ile birlikte)
  */
 inline bool pushToFirebase(const String& jsonData) {
     if (WiFi.status() != WL_CONNECTED) {
@@ -69,8 +70,36 @@ inline bool pushToFirebase(const String& jsonData) {
     Serial.print("Firebase'e gonderiliyor: ");
     Serial.println(path);
     
+    // Orijinal JSON'u al ve karar ağacı durumunu ekle
+    String enhancedJson = jsonData;
+    
+    // Karar ağacı durumunu al
+    DecisionStatus status = getDecisionStatus();
+    
+    // JSON'un sonundaki } karakterini kaldır
+    if (enhancedJson.endsWith("}")) {
+        enhancedJson = enhancedJson.substring(0, enhancedJson.length() - 1);
+        
+        // Karar ağacı verilerini ekle
+        enhancedJson += ",\"decision\":{";
+        enhancedJson += "\"mode\":\"" + String(status.isNightMode ? "GECE" : "GUNDUZ") + "\",";
+        enhancedJson += "\"hour\":" + String(status.currentHour) + ",";
+        enhancedJson += "\"code\":\"" + status.lastDecisionCode + "\",";
+        enhancedJson += "\"desc\":\"" + status.lastDecisionDesc + "\",";
+        enhancedJson += "\"temp\":\"" + status.tempStatus + "\",";
+        enhancedJson += "\"hum\":\"" + status.humStatus + "\",";
+        enhancedJson += "\"co2\":\"" + status.co2Status + "\",";
+        enhancedJson += "\"soil\":\"" + status.soilStatus + "\",";
+        enhancedJson += "\"pres\":\"" + status.pressureStatus + "\",";
+        enhancedJson += "\"lux\":\"" + status.luxStatus + "\",";
+        enhancedJson += "\"fan\":" + String(status.suggestFan ? "true" : "false") + ",";
+        enhancedJson += "\"pump\":" + String(status.suggestPump ? "true" : "false") + ",";
+        enhancedJson += "\"light\":" + String(status.suggestLight ? "true" : "false");
+        enhancedJson += "}}";
+    }
+    
     FirebaseJson json;
-    json.setJsonData(jsonData);
+    json.setJsonData(enhancedJson);
     
     if (Firebase.RTDB.setJSON(&firebaseData, path.c_str(), &json)) {
         Serial.println("Firebase'e basariyla gonderildi!");

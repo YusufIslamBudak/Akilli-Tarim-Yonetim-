@@ -52,7 +52,7 @@ void processReceivedJSON();
 // ============================================
 void setup() {
     // CPU frekansını 80MHz'e düşür (güç tasarrufu)
-    system_update_cpu_freq(80);
+    system_update_cpu_freq(160);
     
     // USB Serial Monitor başlat
     Serial.begin(SERIAL_BAUD);
@@ -146,8 +146,16 @@ void loop() {
         processReceivedJSON();
     }
     
+
+
+
+
     // Karar ağacını çalıştır (10 saniyede bir)
     runDecisionTreeIfNeeded();
+
+
+
+
     
     // Firebase'e periyodik gönderim (30 saniyede bir)
     if (millis() - lastFirebaseSend > FIREBASE_SEND_INTERVAL) {
