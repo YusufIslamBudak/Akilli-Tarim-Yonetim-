@@ -23,7 +23,7 @@
 const float BEAN_TEMP_DAY_MIN        = 18.0;
 const float BEAN_TEMP_DAY_MAX        = 30.0;
 const float BEAN_TEMP_NIGHT_MIN      = 12.0;
-const float BEAN_TEMP_NIGHT_MAX      = 18.0;
+const float BEAN_TEMP_NIGHT_MAX      = 25.0;// doğrusu 18-22 arası ama esneklik için 25
 
 const float BEAN_TEMP_MIN_IDEAL      = 18.0;  // genel ideal alt (gündüz)
 const float BEAN_TEMP_MAX_IDEAL      = 30.0;  // genel ideal üst (gündüz)
